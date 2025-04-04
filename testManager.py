@@ -1,0 +1,791 @@
+from commands import write_command
+import time
+from dataclasses import dataclass
+from typing import Callable, Any, List
+from emu_sentry import Sentry
+import datetime
+from emu_sentry import Sentry, get_timestamp_bytes, get_random_timestamp
+
+@dataclass 
+class TestEntry:
+    name: str
+    success: bool
+    func: Callable[..., bool]
+    args: List[Any] = None
+
+    def run(self):
+        """Run the test and update the 'success' attribute based on the result."""
+        if self.args:
+            self.success = self.func(*self.args, self)  # Pass self (the TestEntry instance) as the last argument
+        else:
+            self.success = self.func(self)  # Pass self directly if no arguments
+
+
+
+## Generic commands / globals ##
+PRNT_CMD = b'\x0C'
+EN = 0x01
+DIS = 0x00
+CR_CMD = b'\x0D'
+LF_CMD = b'\x0A'
+
+def datetime_to_bytes(dt: datetime.datetime) -> bytes:
+    # Extract date and time components
+    year = dt.year
+    month = dt.month
+    day = dt.day
+    hour = dt.hour
+    minute = dt.minute
+
+    # Pack the components into bytes
+    year_bytes = year.to_bytes(2, 'little')  
+    month_byte = month.to_bytes(1, 'little')  
+    day_byte = day.to_bytes(1, 'little')     
+    hour_byte = hour.to_bytes(1, 'little')   
+    minute_byte = minute.to_bytes(1, 'little')
+
+    return year_bytes + month_byte + day_byte + hour_byte + minute_byte
+
+def checkSuccess(testName, test_entry: TestEntry):
+    """Updates the success attribute of the TestEntry instance."""
+    while True:
+        status = input(f"Pass? (y/n): ").strip().lower()
+        if status in ['y', 'n']:
+            break
+        print("Invalid input. Please enter 'y' or 'n'.")
+    
+    if status == 'n':
+        print(f"{testName} - Test failed")
+        test_entry.success = False  # Update the test entry as failed
+        return False
+    else:
+        print(f"{testName} - Test passed")
+        test_entry.success = True  # Update the test entry as passed
+        return True
+
+def test_printQuality(ser, device, quantity, test_entry: TestEntry):
+
+    response = write_command(device, "SET_PRINT_QUALITY_NORMAL")
+    if response == "NAK":
+        print("Failed to set print quality")
+        return
+    
+    print("Print quality set to NORMAL")
+    for i in range(quantity):
+        for j in range(10):
+            ser.write(b'PRINT QUALITY NORMAL\n')
+        ser.write(PRNT_CMD)
+        time.sleep(2)  
+
+    response = write_command(device, "SET_PRINT_QUALITY_HIGH_QUALITY")
+    if response == "NAK":
+        print("Failed to set print quality")
+        return
+    
+    print("Print quality set to HIGH QUALITY")
+    for i in range(quantity):
+        for j in range(10):
+            ser.write(b'PRINT QUALITY HIGH QUALITY\n')
+        ser.write(PRNT_CMD)
+        time.sleep(2)  
+
+    response = write_command(device, "SET_PRINT_QUALITY_HIGH_SPEED")
+    if response == "NAK":
+        print("Failed to set print quality")
+        return
+    
+    print("Print quality set to HIGH SPEED")
+    for i in range(quantity):
+        for j in range(10):
+            ser.write(b'PRINT QUALITY HIGH SPEED\n')
+        ser.write(PRNT_CMD)
+        time.sleep(2)  
+
+    response = write_command(device, "SET_PRINT_QUALITY_NORMAL")
+    if response == "NAK":
+        print("Failed to set print quality")
+        return
+    
+    return checkSuccess("PRINT_QUALITY", test_entry)
+    
+
+def test_jamTestingRetractionMode(ser, device, quantity, mm, test_entry: TestEntry):
+    print(f"Load {mm}mm paper into printer")
+    input("Press Enter to continue...")
+
+    #Set paper size to mm
+    if mm == 80:
+        size = 0x50
+    elif mm == 58:
+        size = 0x3A
+    
+    # Set paper size to 80mm or 58mm
+    response = write_command(device, "SET_PAPER_SIZE", size)
+    if response == "NAK":
+        print("Failed to set paper size")
+        return
+    
+    response = write_command(device, "SET_RETRACT_ENABLE", EN)
+    if response == "NAK":
+        print("Failed to set retraction mode")
+        return
+    
+    # Set new ticket action to retract
+    response = write_command(device, "SET_NEW_TICKET_ACTION", 0x02)
+    if response == "NAK":
+        print("Failed to set retraction mode")
+        return
+    
+    response = write_command(device, "SET_PRINT_QUALITY_NORMAL")
+    if response == "NAK":
+        print("Failed to set print quality")
+        return
+    
+    for i in range(quantity):
+        for j in range(10):
+            ser.write(b'PRINT QUALITY NORMAL\nRETRACT TESTING\n')
+        ser.write(PRNT_CMD)
+        time.sleep(2)  
+
+    response = write_command(device, "SET_PRINT_QUALITY_HIGH_QUALITY")
+    if response == "NAK":
+        print("Failed to set print quality")
+        return
+    
+    for i in range(quantity):
+        for j in range(10):
+            ser.write(b'PRINT QUALITY HIGH QUALITY\nRETRACT TESTING\n')
+        ser.write(PRNT_CMD)
+        time.sleep(2)
+
+    ## Return to default settings ##
+    response = write_command(device, "SET_RETRACT_ENABLE", DIS)
+    if response == "NAK":
+        print("Failed to set retraction mode")
+        return
+    
+    response = write_command(device, "SET_NEW_TICKET_ACTION", 0x01)
+    if response == "NAK":
+        print("Failed to set retraction mode")
+        return
+    
+    response = write_command(device, "SET_PRINT_QUALITY_NORMAL")
+    if response == "NAK":
+        print("Failed to set print quality")
+        return
+
+    return checkSuccess(f"JAM_RETRACTION_{mm}MM", test_entry)
+
+def test_jamTestingContinuousMode(ser, device, quantity, mm, test_entry: TestEntry):
+    print(f"Load {mm}mm paper into printer")
+    input("Press Enter to continue...")
+
+    #Set paper size to mm
+    if mm == 80:
+        size = 0x50
+    elif mm == 58:
+        size = 0x3A
+    
+    # Set paper size to 80mm or 58mm
+    response = write_command(device, "SET_PAPER_SIZE", size)
+    if response == "NAK":
+        print("Failed to set paper size")
+        return
+    
+    #Print density set to 160%
+    response = write_command(device, "SET_PRINT_DENSITY", 0xA0)
+    if response == "NAK":
+        print("Failed to set print quality")
+        return
+    
+    for i in range(quantity):
+        for j in range(10):
+            ser.write(b'PRINT DENSITY 160% \nCONTINUOUS TESTING\n')
+        ser.write(PRNT_CMD)
+        time.sleep(2)  
+
+    #Print density set to 100%
+    response = write_command(device, "SET_PRINT_DENSITY", 0x64)
+    if response == "NAK":
+        print("Failed to set print quality")
+        return
+    
+    for i in range(quantity):
+        for j in range(10):
+            ser.write(b'PRINT DENSITY 100% \nCONTINUOUS TESTING\n')
+        ser.write(PRNT_CMD)
+        time.sleep(2)
+    
+    if mm == 80:
+        print("You can keep the 80mm paper in the printer\nfor the rest of the tests!")
+
+    return checkSuccess(f"JAM_CONTINUOUS_{mm}MM", test_entry)
+
+def test_presentLength(ser, device, test_entry: TestEntry):
+    
+    response = write_command(device, "SET_PRESENTER_LENGTH", 0xC8)
+    if response == "NAK":
+        print("Failed to set presenter length")
+        return
+    
+    ser.write(b'OBSERVE PRESENT LENGTH: 200\n')
+    ser.write(PRNT_CMD)
+
+    input("Observe present length. \nPress Enter to continue...\n")
+
+    response = write_command(device, "SET_PRESENTER_LENGTH", 0x0A)
+    if response == "NAK":
+        print("Failed to set presenter length")
+        return
+    
+    ser.write(b'OBSERVE PRESENT LENGTH: 10\n')
+    ser.write(PRNT_CMD)
+
+    input(f"Observe present length. \nPress Enter to continue...\n")
+
+    response = write_command(device, "SET_PRESENTER_LENGTH", 0xC8)
+    if response == "NAK":
+        print("Failed to set presenter length")
+        return
+
+    return checkSuccess(f"PRESENT_LENGTH", test_entry)
+
+def test_CRLF(ser, device, test_entry: TestEntry):
+
+    print("Testing carriage return (0x0D)\n")
+    response = write_command(device, "SET_CR_CFG", EN)
+    if response == "NAK":
+        print("Failed to set carriage return")
+        return
+    
+    ser.write(b'CARRIAGE RETURN ENABLE\n')
+    ser.write(CR_CMD)
+    ser.write(CR_CMD)
+    ser.write(CR_CMD)
+    ser.write(CR_CMD)
+    ser.write(CR_CMD)
+    ser.write(b'THIS LINE SHOULD BE\n 5 BELOW FIRST LINE\n')
+    ser.write(PRNT_CMD)
+
+    input("Observe ticket!\nPress Enter to continue...\n")
+
+    response = write_command(device, "SET_CR_CFG", DIS)
+    if response == "NAK":
+        print("Failed to set carriage return")
+        return
+
+    ser.write(b'CARRIAGE RETURN DISABLED\n')
+    ser.write(CR_CMD)
+    ser.write(CR_CMD)
+    ser.write(CR_CMD)
+    ser.write(CR_CMD)
+    ser.write(CR_CMD)
+    ser.write(b'THIS LINE SHOULD BE ONE LINE\n BELOW FIRST\n')    
+    ser.write(PRNT_CMD) 
+
+    input("Observe ticket!\nPress Enter to continue...\n")
+
+    print("Testing line feed (0x0A)\n")
+    response = write_command(device, "SET_LF_CFG", EN)
+    if response == "NAK":
+        print("Failed to set line feed")
+        return
+    
+    #fun fact: \n and 0x0A over ser     are the same thing, but we are 
+    #keeping this format for consistency with the CR_CMD :)
+
+    ser.write(b'LINEFEED ENABLED\n')
+    ser.write(LF_CMD)
+    ser.write(LF_CMD)
+    ser.write(LF_CMD)
+    ser.write(LF_CMD)
+    ser.write(LF_CMD)
+    ser.write(b'THIS LINE SHOULD BE FIVE LINES\n BELOW FIRST\n')        
+    ser.write(PRNT_CMD) 
+
+    input("Observe ticket!\n Press Enter to continue...\n")
+
+    response = write_command(device, "SET_LF_CFG", DIS)
+    if response == "NAK":
+        print("Failed to set line feed")
+        return
+    
+    ser.write(b'LINEFEED DISABLED  \n')
+    ser.write(LF_CMD)
+    ser.write(LF_CMD)
+    ser.write(LF_CMD)
+    ser.write(LF_CMD)
+    ser.write(LF_CMD)
+    ser.write(b'THIS LINE SHOULD BE ON THE SAME AS THE FIRST')
+    ser.write(PRNT_CMD) 
+
+    response = write_command(device, "SET_LF_CFG", EN)
+    if response == "NAK":
+        print("Failed to set line feed")
+        return
+
+    return checkSuccess(f"PRESENT_LENGTH", test_entry)
+
+def test_autocut(ser, device, test_entry: TestEntry):
+
+    response = write_command(device, "SET_AUTOCUT_EN", EN)
+    if response == "NAK":
+        print("Failed to set autocut")
+        return
+    for i in range(10):
+        ser.write(b'AUTOCUT ENABLED\n')
+    
+
+    input("Auto cut enabled!\nPress Enter to continue...\n")
+
+    response = write_command(device, "SET_AUTOCUT_TIMEOUT", 0x0A)
+    if response == "NAK":
+        print("Failed to set autocut")
+        return
+    for i in range(10):
+        ser.write(b'AUTOCUT DISABLED\n')   
+
+    print("Autocut timeout set to 10 seconds. Wait for print!")
+    input("Press Enter to continue...\n")
+
+    response = write_command(device, "SET_AUTOCUT_TIMEOUT", 0x03)
+    if response == "NAK":
+        print("Failed to set autocut")
+        return
+    for i in range(10):
+        ser.write(b'AUTOCUT DISABLED\n')   
+
+    print("Autocut timeout set to 3 seconds. Wait for print!")
+    input("Press Enter to continue...\n")
+
+    response = write_command(device, "SET_AUTOCUT_EN", DIS)
+    if response == "NAK":
+        print("Failed to set autocut")
+        return
+    for i in range(10):
+        ser.write(b'AUTOCUT DISABLED\n')
+    input("Autocut disabled!\nTicket should be inside printer.\nPress enter to continue/eject ticket\n")
+    ser.write(PRNT_CMD)
+
+    response = write_command(device, "SET_AUTOCUT_EN", EN)
+    if response == "NAK":
+        print("Failed to set autocut")
+        return    
+
+    return checkSuccess(f"AUTOCUT", test_entry)
+
+def test_truncateWS(ser, device, test_entry: TestEntry):
+    response = write_command(device, "SET_TRUNCATE_WS", EN)
+    if response == "NAK":
+        print("Failed to set truncate whitespace")
+        return
+    
+    response = write_command(device, "SET_LF_CFG", EN)
+    if response == "NAK":
+        print("Failed to set line feed")
+        return
+    
+    for i in range(10):
+        ser.write(b'TRUNCATE WHITE SPACE ENABLED\n')
+    ser.write(b'This ticket should not have\nextra space at the end')
+    for i in range(10):
+        ser.write(LF_CMD)
+
+    ser.write(PRNT_CMD)
+    
+    time.sleep(2)
+
+    response = write_command(device, "SET_TRUNCATE_WS", DIS)
+    if response == "NAK":
+        print("Failed to set truncate whitespace")
+        return
+    
+    for i in range(10):
+        ser.write(b'TRUNCATE WHITE SPACE DISABLED\n')
+    ser.write(b'This ticket SHOULD have\nwhite space at the end\n')
+    for i in range(10):
+        ser.write(LF_CMD)
+    ser.write(PRNT_CMD)
+
+    input("Compare the two tickets to confirm truncate WS works\nPress Enter to continue...\n")
+    
+    return checkSuccess(f"TRUNCATE_WS", test_entry)
+
+def test_pullTabMode(ser, device, test_entry: TestEntry):
+    response = write_command(device, "SET_PULL_TAB_MODE", EN)
+    if response == "NAK":
+        print("Failed to set pull tab mode")
+        return
+    
+    ser.write(b'PULL TAB ENABLED\n')
+    ser.write(b'This is a test of the pull tab mode.\n')
+    ser.write(PRNT_CMD)
+
+    input("Observe ticket!\nPress Enter to continue...\n")
+
+    response = write_command(device, "SET_PULL_TAB_MODE", DIS)
+    if response == "NAK":
+        print("Failed to set pull tab mode")
+        return
+    
+    ser.write(b'PULL TAB DISABLED\n')
+    ser.write(b'This is a test of the pull tab mode.\n')
+    ser.write(PRNT_CMD)
+
+    input("Observe ticket!\nPress Enter to continue...\n")
+
+    return checkSuccess(f"PULL_TAB", test_entry)
+
+def convert_to_percentage(value):
+    percentage_map = {
+        6: "10%",
+        5: "20%",
+        4: "30%",
+        3: "40%",
+        2: "50%",
+        1: "60%",
+        0: "70%",
+        -1: "80%",
+        -2: "90%",
+        -3: "100%"
+    }
+    return percentage_map.get(value, "Disabled")  # Default case
+
+
+def test_fonts(ser, device, test_entry: TestEntry):
+    time.sleep(1)
+    response = write_command(device, "PRINT_FONT_PAGE")
+    if response == "NAK":
+        print("Failed to set font")
+        return
+    input("Printing default font page\nPress Enter to continue...\n")#
+
+    print("Testing custom CPI options")
+    for i in range(-3, 7):
+        if i == 0:
+            response = write_command(device, "SET_CUSTOM_CPI", int(format(7 & 0xFF, '02X'), 16))
+        else:    
+            response = write_command(device, "SET_CUSTOM_CPI", int(format(i & 0xFF, '02X'), 16))
+        if response == "NAK":
+            print("Failed to set font")
+            return    
+        ser.write(f"CUSTOM CPI AT {convert_to_percentage(i)}".encode('utf-8'))
+        ser.write(LF_CMD)
+        time.sleep(.1)
+    ser.write(PRNT_CMD)
+    input("Observe ticket!\nPress Enter to continue...\n")#
+
+
+    response = write_command(device, "SET_CUSTOM_CPI", DIS)
+    if response == "NAK":
+        print("Failed to disable custom CPI")
+        return
+    
+    print("Testing Lock CPI")
+    response = write_command(device, "SET_LOCK_CPI", DIS)
+    if response == "NAK":
+        print("Failed to set font")
+        return
+    
+    time.sleep(1)
+    ser.write([0x1B, 0xC1, 0x00])
+    ser.write(b'LOCK CPI DISABLED\n')
+    time.sleep(.2)
+    ser.write([0x1B, 0xC1, 0x01])   
+    ser.write(b'LOCK CPI DISABLED\n')
+    time.sleep(.2)
+    ser.write([0x1B, 0xC1, 0x02])
+    ser.write(b'LOCK CPI DISABLED\n')
+    ser.write(b'\nThe above should all\n be different widths')
+    ser.write(PRNT_CMD)
+    time.sleep(.2)
+
+    response = write_command(device, "SET_LOCK_CPI", EN)
+    if response == "NAK":
+        print("Failed to set font")
+        return
+    
+    time.sleep(1)
+    ser.write([0x1B, 0xC1, 0x00])
+    ser.write(b'LOCK CPI ENABLED\n')
+    time.sleep(.2)
+    ser.write([0x1B, 0xC1, 0x01])
+    ser.write(b'LOCK CPI ENABLED\n')
+    time.sleep(.2)
+    ser.write([0x1B, 0xC1, 0x02])
+    ser.write(b'LOCK CPI ENABLED\n')
+    ser.write(b'\nThe above should all\n be the same width')
+    ser.write(PRNT_CMD)
+    time.sleep(1)
+
+    response = write_command(device, "SET_LOCK_CPI", DIS)
+    if response == "NAK":
+        print("Failed to set font")
+        return
+
+    return checkSuccess(f"FONTS", test_entry)
+
+def test_SENTRY_duplicateKeywords(ser, device, test_entry: TestEntry):
+    input("This is a SENTRY test. \n>>PAIR PRINTER BEFORE CONTINUING<<\nPress Enter to continue...\n")
+    
+    response = write_command(device, "SET_DUPLICATE_KEYWORD", [0x4D, 0x41, 0x49, 0x4E, 0x54, 0x45, 0x4E, 0x41, 0x4E, 0x43, 0x45] + [0x00] * 9)
+    if response == "NAK":
+        print("Failed to set duplicate keywords")
+        return
+    
+    ser.write(b'DUP KEYWORD TESTING\n')
+    ser.write(b'KEYWORD: MAINTENANCE\n')
+    ser.write(b'\nThere should be no QR code\n on this ticket!\n')
+    ser.write(PRNT_CMD)
+
+    time.sleep(2)
+
+    ser.write(b'DUP KEYWORD TESTING\n')
+    ser.write(b'This one should have a QR code!\n')
+    ser.write(PRNT_CMD)
+    
+    input("Observe ticket!\nPress Enter to continue...\n")
+
+    response = write_command(device, "SET_MULTI_DUPKEY", [0x00, 0x55, 0x4C, 0x54, 0x52, 0x41, 0x4C, 0x49, 0x47, 0x48, 0x54, 0x42, 0x45, 0x41, 0x4D] + [0x00] * 6)
+    if response == "NAK":
+        print("Failed to set duplicate keywords")
+        return
+
+    ser.write(b'MULTI-DUP KEYWORD TESTING\n')
+    ser.write(b'KEYWORD: ULTRALIGHTBEAM\n\n')
+    ser.write(b'\nThere should be no QR code\n on this ticket!\n')
+    ser.write(PRNT_CMD)
+
+    ser.write(b'MULTI-DUP KEYWORD TESTING\n')
+    ser.write(b'This one SHOULD have a QR code!\n')
+    ser.write(PRNT_CMD)
+    
+    time.sleep(2)
+    
+    response = write_command(device, "SET_MULTI_DUPKEY", [0x01, 0x4E, 0x45, 0x56, 0x45, 0x52, 0x45, 0x4E, 0x44, 0x45, 0x52] + [0x00] * 10)
+    if response == "NAK":
+        print("Failed to set duplicate keywords")
+        return
+
+    ser.write(b'MULTI-DUP KEYWORD TESTING\n')
+    ser.write(b'KEYWORD: NEVERENDER\n\n')
+    ser.write(b'\nThere should be no QR code\n on this ticket!\n')
+    ser.write(PRNT_CMD)
+
+    ser.write(b'MULTI-DUP KEYWORD TESTING\n')
+    ser.write(b'This one SHOULD have a QR code!\n')
+    ser.write(PRNT_CMD)
+    
+    time.sleep(2)
+
+    response = write_command(device, "SET_MULTI_DUPKEY", [0x02, 0x4C, 0x55, 0x43, 0x4B, 0x59, 0x43, 0x41, 0x54] + [0x00] * 12)
+    if response == "NAK":
+        print("Failed to set duplicate keywords")
+        return
+
+    ser.write(b'MULTI-DUP KEYWORD TESTING\n')
+    ser.write(b'KEYWORD: LUCKYCAT\n\n')
+    ser.write(b'\nThere should be no QR code\n on this ticket!\n')
+    ser.write(PRNT_CMD)
+
+    ser.write(b'MULTI-DUP KEYWORD TESTING\n')
+    ser.write(b'This one SHOULD have a QR code!\n')
+    ser.write(PRNT_CMD)
+    
+    return checkSuccess(f"DUPLICATE_KEY", test_entry)
+
+def test_SENTRY_config(ser, device, test_entry: TestEntry):
+    sentry = Sentry()
+    input ("This is a SENTRY test. \n>>PAIR PRINTER<<\n>>CONNECT A USB QR SCANNER<<\nPress Enter to continue...\n")
+    
+    while(1):
+        try:
+            pairing_code = input("Pairing Code: ")
+            sentry.pair(pairing_code)
+            break
+        except Exception as e:
+            print(f"Error pairing with SENTRY: {e}")
+    
+    print("\nSENTRY Keyword Test\n------------\n")
+    # Set SENTRY config to:
+    # Keyword parse, keyword: "WINNER"
+    # case, skip, parse disabled
+    print("Keyword: WINNER")
+    response = write_command(device, "SET_SENTRY_CONFIG", [0x02, 0x57, 0x49, 0x4E, 0x4E, 0x45, 0x52] + [0x00] * 14 +[0x00, 0x00, 0x00])  
+    if response == "NAK":
+        print("Failed to set SENTRY config")
+        return
+    ser.write(b'SENTRY CONFIG TESTING\n')
+    ser.write(b'WINNER $32.00\n')
+    ser.write(PRNT_CMD)
+
+    redemption = input("Scan ticket to redeem: ")
+    is_valid, is_duplicate, timestamp_redemption = sentry.validate_ticket(redemption)
+    if is_valid:
+        print(f"VALID")
+    else:
+        print("INVALID TICKET")
+    
+    # Set SENTRY config to:
+    # Keyword parse, keyword: "antiestablishmentism"
+    # case, skip, parse disabled
+    print("\nKeyword: antiestablishmentism")
+    response = write_command(device, "SET_SENTRY_CONFIG", [0x02, 0x61, 0x6E, 0x74, 0x69, 0x65, 0x73, 0x74, 0x61, 0x62, 0x6C, 0x69, 0x73, 0x68, 0x6D, 0x65, 0x6E, 0x74, 0x69, 0x73, 0x6D] +[0x00, 0x00, 0x00])  
+    if response == "NAK":
+        print("Failed to set SENTRY config")
+        return
+    ser.write(b'SENTRY CONFIG TESTING\n')
+    ser.write(b'antiestablishmentism $21.00\n')
+    ser.write(PRNT_CMD)
+
+    redemption = input("Scan ticket to redeem: ")
+    is_valid, is_duplicate, timestamp_redemption = sentry.validate_ticket(redemption)
+    if is_valid:
+        print(f"VALID")
+    else:
+        print("INVALID TICKET")
+
+    print("\nCase sensitive test")
+    response = write_command(device, "SET_SENTRY_CONFIG", [0x02, 0x61, 0x6E, 0x74, 0x69, 0x65, 0x73, 0x74, 0x61, 0x62, 0x6C, 0x69, 0x73, 0x68, 0x6D, 0x65, 0x6E, 0x74, 0x69, 0x73, 0x6D] +[0x01, 0x00, 0x00])  
+    if response == "NAK":
+        print("Failed to set SENTRY config")
+        return
+    ser.write(b'SENTRY CONFIG TESTING\n')
+    ser.write(b'antiestaBlishMentism $21.00\n')
+    ser.write(PRNT_CMD)
+
+    input("Ticket should dispaly error message\nPress Enter to continue...\n")
+
+    print("Line parse test\nSet to parse 3rd line")
+    response = write_command(device, "SET_SENTRY_CONFIG", [0x03, 0x61, 0x6E, 0x74, 0x69, 0x65, 0x73, 0x74, 0x61, 0x62, 0x6C, 0x69, 0x73, 0x68, 0x6D, 0x65, 0x6E, 0x74, 0x69, 0x73, 0x6D] +[0x00, 0x00, 0x03])  
+    if response == "NAK":
+        print("Failed to set SENTRY config")
+        return
+    ser.write(b'SENTRY CONFIG TESTING\n')
+    ser.write(b'antiestablishmentism $3.00\n')
+    ser.write(b'antiestablishmentism $1.00\n')
+    ser.write(b'antiestablishmentism $5.00\n')
+    ser.write(b'antiestablishmentism $9.00\n')
+    ser.write(PRNT_CMD)
+
+    redemption = input("Scan ticket to redeem: ")
+    is_valid, is_duplicate, timestamp_redemption = sentry.validate_ticket(redemption)
+    if is_valid:
+        print(f"VALID")
+    else:
+        print("INVALID TICKET")
+    parsed_redemption = sentry.parse(redemption)
+    payout = parsed_redemption.split(",")[0].split(" ")[1]  
+    if payout == "$1.00":
+        print(f"Payout is correct: {payout}\n")
+    else:
+        print(f"Payout is incorrect: {payout}")
+
+    print("\nSkip parse test\nSet to skip 3 occurances")
+    response = write_command(device, "SET_SENTRY_CONFIG", [0x04, 0x61, 0x6E, 0x74, 0x69, 0x65, 0x73, 0x74, 0x61, 0x62, 0x6C, 0x69, 0x73, 0x68, 0x6D, 0x65, 0x6E, 0x74, 0x69, 0x73, 0x6D] +[0x00, 0x03, 0x00])  
+    if response == "NAK":
+        print("Failed to set SENTRY config")
+        return
+    ser.write(b'SENTRY CONFIG TESTING\n')
+    ser.write(b'antiestablishmentism $3.00\n')
+    ser.write(b'antiestablishmentism $1.00\n')
+    ser.write(b'antiestablishmentism $5.00\n')
+    ser.write(b'antiestablishmentism $9.00\n')
+    ser.write(PRNT_CMD)
+
+    redemption = input("Scan ticket to redeem: ")
+    is_valid, is_duplicate, timestamp_redemption = sentry.validate_ticket(redemption)
+    if is_valid:
+        print(f"VALID")
+    else:
+        print("INVALID TICKET")
+    parsed_redemption = sentry.parse(redemption)
+    payout = parsed_redemption.split(",")[0].split(" ")[1]  
+    if payout == "$9.00":
+        print(f"Payout is correct: {payout}\n")
+    else:
+        print(f"Payout is incorrect: {payout}")
+
+    return checkSuccess(f"SENTRY_CONFIG", test_entry)
+
+def test_SENTRY_qrTimeStamp (ser, device, test_entry: TestEntry):
+    sentry = Sentry()
+    input("This is a SENTRY test. \n>>PAIR PRINTER<<\n>>CONNECT A USB QR SCANNER<<\nPress Enter to continue...\n")
+    qty = input("Enter number of tickets to print: ")
+
+    while(1):
+        try:
+            pairing_code = input("Pairing Code: ")
+            sentry.pair(pairing_code)
+            break
+        except Exception as e:
+            print(f"Error pairing with SENTRY: {e}")
+
+
+    response = write_command(device, "SEN_QR_TS_CFG", EN)
+    if response == "NAK":
+        print("Failed to enable QR timestamp")
+        return
+
+    # Set SENTRY config to:
+    # Keyword parse, keyword: "WINNER"
+    # case, skip, parse disabled
+    print("Keyword: WINNER")
+    response = write_command(device, "SET_SENTRY_CONFIG", [0x02, 0x57, 0x49, 0x4E, 0x4E, 0x45, 0x52] + [0x00] * 14 +[0x00, 0x00, 0x00])  
+    if response == "NAK":
+        print("Failed to set SENTRY config")
+        return
+    for i in range(int(qty)):
+        timestamp = get_random_timestamp()
+        timestamp = timestamp.replace(second=0, microsecond=0)  # Create a new datetime object with seconds set to 0
+        timestamp_bytes = datetime_to_bytes(timestamp)
+
+        # Convert timestamp_bytes to a list
+        timestamp_bytes_list = list(timestamp_bytes)  
+
+        # timestamp + 0x00 (for the seconds byte)
+        response = write_command(device, "SET_RTC", timestamp_bytes_list + [0x00])
+        if response == "NAK":
+            print("Failed to set RTC")
+            return
+
+        # Print ticket
+        ser.write(b'WINNER $23.00\n')
+        ser.write(b'\x0C')
+
+
+        redemption = input("Redemption TKT: ")
+        is_valid, is_duplicate, timestamp_redemption = sentry.validate_ticket(redemption)
+        if is_valid:
+            print(f"VALID")
+            if timestamp == timestamp_redemption:
+                print(f"TS MATCH: {timestamp}\n")
+            else:
+                print("Timestamp does not match!")
+                print(f"Generated TS: {timestamp}")
+                print(f"Redemption TS: {timestamp_redemption}")
+    
+    return checkSuccess(f"SENTRY_QR_TIMESTAMP", test_entry)
+
+def test_ESCPOS(ser, device, test_entry: TestEntry):
+    time.sleep(1)
+    response = write_command(device, "GET_SENTRY_CONFIG")
+    if response == "NAK":  
+        print("Failed to get SENTRY config")
+        return
+    if response[1][0] == 0x01:  
+        # Unpair printer to reset SENTRY
+        print("Unpairing printer...")
+        response = write_command(device, "SET_SENTRY_CONFIG", [0x00] + [0x00] * 20 +[0x00, 0x00, 0x00])  
+        if response == "NAK":
+            print("Failed to set SENTRY config")
+            return
+    input("About to test all ESC/POS commands\nTons of tickets will print!\nPress Enter to continue...\n")
+    # Open the binary file in read-binary mode
+    with open(r"C:\Users\emmontemayor\Source_Code\Reliance Regression\main.bin", "rb") as binary_file:
+        # Read the file in chunks and write to the serial port
+        while chunk := binary_file.read(1024):  # Read in 1KB chunks
+            ser.write(chunk)
+            time.sleep(0.1)  # Optional: Add a small delay to ensure data is sent properly
+
+    return checkSuccess(f"ESC_POS", test_entry)
