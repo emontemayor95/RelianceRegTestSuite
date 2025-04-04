@@ -182,6 +182,7 @@ while True:
     break
 
 tests_todo = []
+tests_completed = []
 if selection == "s":
     print("Available tests:")
     for test_name in TESTS.keys():
@@ -211,9 +212,15 @@ try:
         for test_entry in tests_todo[:]:  
             print("*************************************")
             if test_entry.success:
-                print(f"{test_entry.name} ... PASSED")
                 tests_todo.remove(test_entry)  # Remove passed tests
+                if test_entry in tests_completed:
+                    tests_completed.remove(test_entry)  
+                tests_completed.append(test_entry) 
+                print(f"{test_entry.name} ... PASSED")
             else:
+                if test_entry in tests_completed:
+                    tests_completed.remove(test_entry)                  
+                tests_completed.append(test_entry)
                 print(f"{test_entry.name} ... >>>>>> FAILED <<<<<")
             print("*************************************")
         
@@ -234,9 +241,9 @@ try:
     
     with open("test_results.txt", "w") as results_file:
         results_file.write(f"    RELIANCE FIRMWARE\n      TEST RESULTS\n*************************")
-        for test_name, test_entry in TESTS.items():
-            status = "PASSED" if test_entry.success else "FAILED"
-            results_file.write(f"\n{test_name}: {status}\n*************************")
+        for test_entry in tests_completed:
+            status = "PASSED" if test_entry.success else ">FAILED<"
+            results_file.write(f"\n{test_entry.name}: {status}\n*************************")
     print ("\nTest results saved to test_results.txt")
     
 finally:
