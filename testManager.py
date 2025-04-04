@@ -769,10 +769,8 @@ def test_SENTRY_qrTimeStamp (ser, device, test_entry: TestEntry):
 
 def test_ESCPOS(ser, device, test_entry: TestEntry):
     time.sleep(1)
+    print("Attempting to unpair. If already unpaired, you will see a NAK response")
     response = write_command(device, "GET_SENTRY_CONFIG")
-    if response == "NAK":  
-        print("Failed to get SENTRY config")
-        return
     if response[1][0] == 0x01:  
         # Unpair printer to reset SENTRY
         print("Unpairing printer...")
@@ -781,8 +779,9 @@ def test_ESCPOS(ser, device, test_entry: TestEntry):
             print("Failed to set SENTRY config")
             return
     input("About to test all ESC/POS commands\nTons of tickets will print!\nPress Enter to continue...\n")
+    os = __import__('os')
     # Open the binary file in read-binary mode
-    with open(r"C:\Users\emmontemayor\Source_Code\Reliance Regression\main.bin", "rb") as binary_file:
+    with open(os.path.join(os.path.dirname(__file__), "main.bin"), "rb") as binary_file:
         # Read the file in chunks and write to the serial port
         while chunk := binary_file.read(1024):  # Read in 1KB chunks
             ser.write(chunk)
