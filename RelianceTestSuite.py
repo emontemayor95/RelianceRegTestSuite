@@ -100,27 +100,27 @@ if __name__ == "__main__":
             "JAM_TST_RETRACTION_56MM", 
             False, 
             test_jamTestingRetractionMode, 
-            [ser, device, 3, 58]),  #args: ser,device, quantity, mm
+            [ser, device, 6, 58]),  #args: ser,device, quantity, mm
         "JAM_CONTINUOUS_58MM": TestEntry(
             "JAM_CONTINUOUS_56MM", 
             False, 
             test_jamTestingContinuousMode, 
-            [ser, device, 3, 58]),  #args: ser,device, quantity, mm
+            [ser, device, 6, 58]),  #args: ser,device, quantity, mm
         "JAM_RETRACTION_80MM": TestEntry(
             "JAM_RETRACTION_80MM", 
             False, 
             test_jamTestingRetractionMode, 
-            [ser, device, 3, 80]),  #args: ser,device, quantity, mm
+            [ser, device, 6, 80]),  #args: ser,device, quantity, mm
         "JAM_CONTINUOUS_80MM": TestEntry(
             "JAM_CONTINUOUS_80MM", 
             False, 
             test_jamTestingContinuousMode, 
-            [ser, device, 3, 80]),  #args: ser,device, quantity, mm
+            [ser, device, 6, 80]),  #args: ser,device, quantity, mm
         "PRINT_QUALITY": TestEntry(
             "PRINT_QUALITY",
             False, 
             test_printQuality, 
-            [ser, device, 3]),  #args: ser,device, quantity
+            [ser, device, 6]),  #args: ser,device, quantity
         "PRESENT_LENGTH": TestEntry(
             "PRESENT_LENGTH", 
             False, 
@@ -141,11 +141,11 @@ if __name__ == "__main__":
             False, 
             test_truncateWS, 
             [ser, device]),  #args: ser,device, quantity
-        "PULL_TAB": TestEntry(     #Only useful for pull tab paper, disabled for now
-            "PULL_TAB", 
-            False, 
-            test_pullTabMode, 
-            [ser, device]),  #args: ser,device, quantity
+        #"PULL_TAB": TestEntry(     #Only useful for pull tab paper, disabled for now
+        #    "PULL_TAB", 
+        #    False, 
+        #    test_pullTabMode, 
+        #    [ser, device]),  #args: ser,device, quantity
         "FONTS": TestEntry(
             "FONTS", 
             False, 
