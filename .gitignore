@@ -1,0 +1,6 @@
+# PyInstaller build artifacts
+source/build/
+__pycache__/
+*.py[cod]
+*.so
+*.spec
