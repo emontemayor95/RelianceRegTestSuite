@@ -50,6 +50,30 @@ SERIAL_PORT = 'COM3'
 baudrate = 19200 
 
 if __name__ == "__main__":
+    print(r"""
+  ____      _ _                                    
+ |  _ \ ___| (_) __ _ _ __   ___ ___               
+ | |_) / _ \ | |/ _` | '_ \ / __/ _ \              
+ |  _ <  __/ | | (_| | | | | (_|  __/              
+ |_|_\_\___|_|_|\__,_|_| |_|\___\___|              
+ |  _ \ ___  __ _ _ __ ___  ___ ___(_) ___  _ __   
+ | |_) / _ \/ _` | '__/ _ \/ __/ __| |/ _ \| '_ \  
+ |  _ <  __/ (_| | | |  __/\__ \__ \ | (_) | | | | 
+ |_| \_\___|\__, |_|  \___||___/___/_|\___/|_| |_| 
+   ____ _   |___/                                  
+  / ___| |   |_ _|                                 
+ | |   | |    | |                                  
+ | |___| |___ | |                                  
+  \____|_____|___|                      
+    """)
+
+    print("Setup:" \
+    "\n- Connect the printer to the computer via USB HID" \
+    "\n- Connect the printer to the computer via Serial USB -> RS232 (note the COM#)" \
+    "\n- Load 56mm paper into the printer. Have 80mm paper ready" \
+    "\n- Place the printer on the edge of your desk with the disposal below exposed" \
+    "\n- Locate main.bin, copy its location" \
+    )
     while True:
         com_num = input("Enter COM port NUMBER for serial connection (e.g., 3): ")
         if not com_num.isdigit():
@@ -170,7 +194,12 @@ if __name__ == "__main__":
             "ESC_POS", 
             False, 
             test_ESCPOS, 
-            [ser, device]),  #args: ser,device, quantity    
+            [ser, device]),  #args: ser,device, quantity
+        "PAGE_ESC_POS": TestEntry(  
+            "PAGE_ESC_POS", 
+            False, 
+            test_pageESCPOS, 
+            [ser, device]),  #args: ser,device, quantity      
     }
 
 print ("Welcome to the Reliance Test Suite!\n")

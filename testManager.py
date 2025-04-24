@@ -5,6 +5,9 @@ from typing import Callable, Any, List
 from emu_sentry import Sentry
 import datetime
 from emu_sentry import Sentry, get_timestamp_bytes, get_random_timestamp
+import sys
+import os
+
 
 @dataclass 
 class TestEntry:
@@ -834,6 +837,16 @@ def test_SENTRY_qrTimeStamp (ser, device, test_entry: TestEntry):
     return checkSuccess(f"SENTRY_QR_TIMESTAMP", test_entry)
 
 def test_ESCPOS(ser, device, test_entry: TestEntry):
+    
+    if getattr(sys, 'frozen', False):
+    # Running in a bundle (e.g., PyInstaller)
+        base_path = sys._MEIPASS
+    else:
+    # Running in a normal Python environment
+        base_path = os.path.dirname(__file__)
+
+    file_path = os.path.join(base_path, "main.bin")
+
     time.sleep(1)
     print("Attempting to unpair. If already unpaired, you will see a NAK response")
     response = write_command(device, "GET_SENTRY_CONFIG")
@@ -844,13 +857,61 @@ def test_ESCPOS(ser, device, test_entry: TestEntry):
         if response == "NAK":
             print("Failed to set SENTRY config")
             return
-    input("About to test all ESC/POS commands\nTons of tickets will print!\nPress Enter to continue...\n")
-    os = __import__('os')
+    input("\n\nAbout to test all ESC/POS commands\nTons of tickets will print!\nPress Enter to continue...\n")
     
     while True:
         try:
             # Open the binary file in read-binary mode
-            with open(os.path.join(os.path.dirname(__file__), "main.bin"), "rb") as binary_file:
+            with open(file_path, "rb") as binary_file:
+                # Read the file in chunks and write to the serial port
+                while chunk := binary_file.read(1024):  # Read in 1KB chunks
+                    ser.write(chunk)
+                    time.sleep(0.1)  # Optional: Add a small delay to ensure data is sent properly
+                break
+        except Exception as e:
+            print(f"Could not find file. Please enter the path to main.bin\n (should be in the same folder as this exe): {e}")
+            try:
+                # Prompt user for the path to the binary file
+                file_path = input("Enter the full path to main.bin: ").strip()
+                with open(file_path, "rb") as binary_file:
+                    # Read the file in chunks and write to the serial port
+                    while chunk := binary_file.read(1024):  # Read in 1KB chunks
+                        ser.write(chunk)
+                        time.sleep(0.1)  # Optional: Add a small delay to ensure data is sent properly
+                    break
+            except Exception as e:
+                print(f"Error reading the provided file path: {e}")
+                continue
+    return checkSuccess(f"ESC_POS", test_entry)
+
+def test_pageESCPOS(ser, device, test_entry: TestEntry):
+    
+    if getattr(sys, 'frozen', False):
+    # Running in a bundle (e.g., PyInstaller)
+        base_path = sys._MEIPASS
+    else:
+    # Running in a normal Python environment
+        base_path = os.path.dirname(__file__)
+
+    file_path = os.path.join(base_path, "page_main.bin")
+
+    time.sleep(1)
+    print("Attempting to unpair. If already unpaired, you will see a NAK response")
+    response = write_command(device, "GET_SENTRY_CONFIG")
+    if response[1][0] == 0x01:  
+        # Unpair printer to reset SENTRY
+        print("Unpairing printer...")
+        response = write_command(device, "SET_SENTRY_CONFIG", [0x00] + [0x00] * 20 +[0x00, 0x00, 0x00])  
+        if response == "NAK":
+            print("Failed to set SENTRY config")
+            return
+    input("\n\nAbout to test all ESC/POS commands\nTons of tickets will print!\nPress Enter to continue...\n")
+
+    
+    while True:
+        try:
+            # Open the binary file in read-binary mode
+            with open(file_path, "rb") as binary_file:
                 # Read the file in chunks and write to the serial port
                 while chunk := binary_file.read(1024):  # Read in 1KB chunks
                     ser.write(chunk)

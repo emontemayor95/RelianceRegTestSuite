@@ -1,9 +1,5 @@
     RELIANCE FIRMWARE
       TEST RESULTS
 *************************
-AUTOCUT: PASSED
-*************************
-CRLF: PASSED
-*************************
-FONTS: FAILED
+PAGE_ESC_POS: PASSED
 *************************
