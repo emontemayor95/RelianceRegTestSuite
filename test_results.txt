@@ -1,5 +1,0 @@
-    RELIANCE FIRMWARE
-      TEST RESULTS
-*************************
-PAGE_ESC_POS: PASSED
-*************************
